@@ -20,32 +20,34 @@ almost isolated from each other by the underlying hypervisor.
 
 First of all clone this repository
 
-    FREERTOS_CELL_DIR=/home/user/freertos-cell
+    FREERTOS_CELL_DIR=$HOME/freertos-cell
     git clone https://github.com/siemens/freertos-cell.git $FREERTOS_CELL_DIR
 
 ## Jailhouse configuration
 
 Let's assume your Jailhouse sources reside in the directory
 
-    JAILHOUSE_DIR=/home/user/jailhouse
+    JAILHOUSE_DIR=$HOME/jailhouse
     
 then do the following to build new cell description files for the hypervisor
 
 1. Root cell description
     
-          cp $FREERTOS_CELL_DIR/jailhouse-configs/bananapi.c $JAILHOUSE_DIR/configs/
+          cp $FREERTOS_CELL_DIR/jailhouse-configs/bananapi.c $JAILHOUSE_DIR/configs/arm/
 
 2. RTOS cell description
 
-          cp $FREERTOS_CELL_DIR/jailhouse-configs/bananapi-freertos-demo.c $JAILHOUSE_DIR/configs/
+          cp $FREERTOS_CELL_DIR/jailhouse-configs/bananapi-freertos-demo.c $JAILHOUSE_DIR/configs/arm/
 
-3. Rebuild your jailhouse subsystem. In the directory "$JAILHOUSE_DIR/configs" you will get
+3. Rebuild your jailhouse subsystem. In the directory "$JAILHOUSE_DIR/configs/arm" you will get
    two new files which are used in the next step.
 
 4. Setup your jailhouse instances
 
-          jailhouse enable $JAILHOUSE_DIR/configs/bananapi.cell
-          jailhouse cell create $JAILHOUSE_DIR/configs/bananapi-freertos-demo.cell
+This step has to be executed on the ARM target. You have to transfer the cell files to the target machine.
+
+          jailhouse enable $JAILHOUSE_DIR/configs/arm/bananapi.cell
+          jailhouse cell create $JAILHOUSE_DIR/configs/arm/bananapi-freertos-demo.cell
 
 ## FreeRTOS code generation
 
@@ -72,6 +74,7 @@ It is also possible to build the code directly on the target machine by doing th
 ## Startup of the application
 
 Now you are ready to start your FreeRTOS demo under the hypervisor.
+Once again this step has to be executed on the ARM target.
 
     jailhouse cell load FreeRTOS $FREERTOS_CELL_DIR/freertos-demo.bin
     jailhouse cell start FreeRTOS
@@ -91,3 +94,4 @@ into consideration the following items:
 - Modify the serial interface access
 - Your hardware needs a GIC (Generic Interrupt Controller) module
 - Of course you need a SoC with virtualization support
+- It must be possible to switch the CPUs online/offline
