@@ -9,7 +9,7 @@ LD = $(CROSS_COMPILE)ld
 AR = $(CROSS_COMPILE)ar
 OBJCOPY = $(CROSS_COMPILE)objcopy
 
-CFLAGS += -mcpu=cortex-a15 -mtune=cortex-a15 -mfpu=vfpv4-d16 -mfloat-abi=hard -O2
+CFLAGS += -mcpu=cortex-a7 -mtune=cortex-a7 -mfpu=vfpv4-d16 -mfloat-abi=hard -O2
 CFLAGS += -DCONFIG_MACH_SUN7I=1
 CFLAGS += -Wall -MMD -pipe
 CFLAGS += -I $(src) -I $(src)/freertos/Source/include -I $(src)/freertos-runtime -I $(src)/freertos/Source/portable/GCC/ARM_A7jailhouse
@@ -44,6 +44,7 @@ LWIP_C_SRCS += \
 	$(LWIP_DIR)/core/dns.c \
 	$(LWIP_DIR)/core/inet_chksum.c \
 	$(LWIP_DIR)/core/init.c \
+	$(LWIP_DIR)/core/ip.c \
 	$(LWIP_DIR)/core/mem.c \
 	$(LWIP_DIR)/core/memp.c \
 	$(LWIP_DIR)/core/netif.c \
@@ -54,33 +55,32 @@ LWIP_C_SRCS += \
 	$(LWIP_DIR)/core/tcp.c \
 	$(LWIP_DIR)/core/tcp_in.c \
 	$(LWIP_DIR)/core/tcp_out.c \
-	$(LWIP_DIR)/core/timers.c \
+	$(LWIP_DIR)/core/timeouts.c \
 	$(LWIP_DIR)/core/udp.c
 # IPv4 code
 CFLAGS += -I$(LWIP_DIR)/include/ipv4
 LWIP_C_SRCS += \
 	$(LWIP_DIR)/core/ipv4/dhcp.c \
 	$(LWIP_DIR)/core/ipv4/autoip.c \
+	$(LWIP_DIR)/core/ipv4/etharp.c \
 	$(LWIP_DIR)/core/ipv4/icmp.c \
 	$(LWIP_DIR)/core/ipv4/igmp.c \
 	$(LWIP_DIR)/core/ipv4/ip4_addr.c \
-	$(LWIP_DIR)/core/ipv4/ip4.c \
-	$(LWIP_DIR)/core/ipv4/ip_frag.c
+	$(LWIP_DIR)/core/ipv4/ip4_frag.c \
+	$(LWIP_DIR)/core/ipv4/ip4.c
 # API code
 LWIP_C_SRCS += \
 	$(LWIP_DIR)/api/api_lib.c \
 	$(LWIP_DIR)/api/api_msg.c \
-	$(LWIP_DIR)/api/err.c \
 	$(LWIP_DIR)/api/netbuf.c \
 	$(LWIP_DIR)/api/netdb.c \
 	$(LWIP_DIR)/api/netifapi.c \
-	$(LWIP_DIR)/api/pppapi.c \
 	$(LWIP_DIR)/api/sockets.c \
 	$(LWIP_DIR)/api/tcpip.c
 # netif
 LWIP_C_SRCS += \
-	$(LWIP_DIR)/netif/etharp.c \
-	$(LWIP_DIR)/netif/ethernetif.c \
+	$(LWIP_DIR)/netif/ethernet.c \
+	$(LWIP_DIR)/netif/ppp/pppapi.c \
 	$(LWIP_DIR)/netif/slipif.c
 # PPP
 LWIP_C_SRCS += \

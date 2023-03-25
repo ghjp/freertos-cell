@@ -88,7 +88,8 @@
 
 /* lwIP includes */
 #include "lwip/tcpip.h"
-#include "lwip/pppapi.h"
+#include "netif/ppp/ppp.h"
+#include "netif/ppp/pppapi.h"
 #include "netif/ppp/pppos.h"
 #include "netif/slipif.h"
 #include "lwip/inet.h"
@@ -200,13 +201,16 @@ void __div0(void)
 
 /* }}} */
 
-/* {{{1 LED control */
-static void led_toggle(void)
+/* {{{1 PIN control */
+
+#define PIO_P7_CFG_REG ((void*)(0x01c20800 + 7*0x24))
+#define LED_PIN 24 /* PH24 */
+
+void pin_toggle(int pin)
 {
 #ifdef CONFIG_MACH_SUN7I
-#define PIO_BASE ((void*)0x01c20800)
-  uint32_t *led_reg = PIO_BASE + 7*0x24 + 0x10;
-  *led_reg ^= 1<<24;
+  uint32_t *data_reg = PIO_P7_CFG_REG + 0x10; /* DATA register */
+  *data_reg ^= 1<<pin;
 #endif
 }
 /* }}} */
@@ -361,10 +365,13 @@ static void testTask( void *pvParameters )
 
 static void blinkTask(void *pvParameters)
 {
+  unsigned arg = (int)pvParameters;
+  unsigned period_ms = arg & 0xffff;
+  unsigned pin = arg >> 16;
   TickType_t pxPreviousWakeTime = xTaskGetTickCount();
   while(1) {
-    led_toggle();
-    vTaskDelayUntil(&pxPreviousWakeTime, pdMS_TO_TICKS(250));
+    pin_toggle(pin);
+    vTaskDelayUntil(&pxPreviousWakeTime, pdMS_TO_TICKS(period_ms));
   }
 }
 
@@ -541,20 +548,19 @@ static void hardware_mmu_ptable_setup(unsigned long iomem[], int n)
       );
 }
 
-static void uart_irq_enable(void)
+static void irq_enable(int m)
 {
   volatile uint8_t *gicd = gic_v2_gicd_get_address() + GICD_ITARGETSR;
-  int n, m, offset;
-  m = UART7_IRQ;
-  printf("UART gicd=%p CPUID=%d\n", gicd, (int)gicd[0]);
+  int n, offset;
+  printf("IRQ gicd=%p CPUID=%d\n", gicd, (int)gicd[0]);
   n = m / 4;
   offset = 4*n;
   offset += m % 4;
   printf("\tOrig GICD_ITARGETSR[%d]=%d\n",m, (int)gicd[offset]);
   gicd[offset] |= gicd[0];
   printf("\tNew  GICD_ITARGETSR[%d]=%d\n",m, (int)gicd[offset]);
-  gic_v2_irq_set_prio(UART7_IRQ, portLOWEST_USABLE_INTERRUPT_PRIORITY);
-  gic_v2_irq_enable(UART7_IRQ);
+  gic_v2_irq_set_prio(m, portLOWEST_USABLE_INTERRUPT_PRIORITY);
+  gic_v2_irq_enable(m);
   //ARM_SLEEP;
 }
 
@@ -564,6 +570,10 @@ static void prvSetupHardware(void)
 {
   unsigned apsr;
   static unsigned long io_dev_map[2];
+  uint32_t *ph_cfg_reg = PIO_P7_CFG_REG;
+  /* Set GREEN LED pin as output */
+  ph_cfg_reg[3] &= ~(0x7<<0); /* Clear PH24_SELECT */
+  ph_cfg_reg[3] |= 0x1<<0; /* Set PH24_SELECT as output */
 
   ser_dev = serial_open();
   io_dev_map[0] = (unsigned long)ser_dev;
@@ -576,7 +586,7 @@ static void prvSetupHardware(void)
   /* Replace the exception vector table by a FreeRTOS variant */
   vPortInstallFreeRTOSVectorTable();
   hardware_fpu_enable();
-  uart_irq_enable();
+  irq_enable(UART7_IRQ);
   serial_irq_rx_enable(ser_dev);
   arm_read_sysreg(CNTFRQ, timer_frq);
   if(!timer_frq) {
@@ -812,12 +822,10 @@ static void echoTcpTask(void *pvParameters)
           } while(netbuf_next(buf) >= 0);
           netbuf_delete(buf);
         }
-        else if (ERR_IS_FATAL(err)) {
+        else {
           UART_OUTPUT("RECV ERR: err=%d\n", err);
           break;
         }
-        else
-          UART_OUTPUT("RECV WARN: err=%d\n", err);
       }
       printf("%s: C[%s] <=== ! ===> S\n", __func__, connected_to_info);
       netconn_close(newconn);
@@ -837,8 +845,6 @@ u32_t pppos_output_cb(ppp_pcb *pcb, u8_t *data, u32_t len, void *ctx)
 
 static void pppTask(void *pvParameters)
 {
-  const char *username = "rtosuser";
-  const char *password = "rtospass";
   const char *msg = NULL;
   struct netif nif;
   TickType_t delay = pdMS_TO_TICKS(2000);
@@ -848,7 +854,7 @@ static void pppTask(void *pvParameters)
   ppp_obj = pppos_create(&nif, pppos_output_cb, ppp_status_cb, ser_dev);
   configASSERT(NULL != ppp_obj);
   ppp_set_default(ppp_obj);
-  ppp_set_auth(ppp_obj, PPPAUTHTYPE_ANY, username, password);
+  //ppp_set_auth(ppp_obj, PPPAUTHTYPE_ANY, username, password);
   ppp_connect(ppp_obj, 0);
   xEventGroupSetBits(event_status, EVBIT_PPP_INIT_DONE);
   while(1) {
@@ -896,14 +902,6 @@ static void netstatTask(void *data)
 
 /* {{{1 main */
 
-int putchar(int c)
-{
-  serial_putchar(ser_dev, c);
-  if('\n' == c)
-    serial_putchar(ser_dev, '\r');
-  return c;
-}
-
 void inmate_main(void)
 {
   unsigned i;
@@ -950,7 +948,7 @@ void inmate_main(void)
       "uartread", /* The text name assigned to the task - for debug only; not used by the kernel. */
       configMINIMAL_STACK_SIZE, /* The size of the stack to allocate to the task. */
       NULL,                                                            /* The parameter passed to the task */
-      tskIDLE_PRIORITY+1, /* The priority assigned to the task. */
+      tskIDLE_PRIORITY+2, /* The priority assigned to the task. */
       NULL );
 
   if(0) for(i = 0; i < 20; i++) {
@@ -982,7 +980,7 @@ void inmate_main(void)
   if(1) xTaskCreate( blinkTask, /* The function that implements the task. */
       "blink", /* The text name assigned to the task - for debug only; not used by the kernel. */
       configMINIMAL_STACK_SIZE, /* The size of the stack to allocate to the task. */
-      NULL, 								/* The parameter passed to the task */
+      (void*)(LED_PIN<<16 | 250), 								/* The parameter passed to the task */
       tskIDLE_PRIORITY, /* The priority assigned to the task. */
       NULL );								    /* The task handle is not required, so NULL is passed. */
   if(0) for(i = 0; i < 2; i++) {
